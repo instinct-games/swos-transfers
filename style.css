@@ -205,7 +205,11 @@ thead th {
   user-select: none;
 }
 thead th.sorted { color: var(--gold); }
-thead th.stat-col, td.stat-col { text-align: center; }
+thead th.stat-col, td.stat-col {
+  text-align: center;
+  padding-left: 5px;
+  padding-right: 5px;
+}
 
 tbody tr { border-bottom: 1px solid var(--border); }
 tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
@@ -218,12 +222,28 @@ td .sub { color: var(--muted); font-size: 12px; }
 
 td.total { font-weight: 700; color: var(--accent); }
 
-.skill { font-weight: 600; }
-.skill-7 { color: #ffd75e; }
-.skill-6 { color: #7ee08a; }
-.skill-5 { color: #b5e07e; }
-.skill-4 { color: var(--text); }
-.skill-lo { color: var(--muted); }
+/* 0-7 rating chips: the classic SWOS in-game skill colours, worst → best:
+   black, red, orange x2, yellow x2, chartreuse, green (pairs shade-separated).
+   The printed digit always carries the value, so colour is reinforcement only. */
+.rt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f0e9e2;
+}
+.r0 { background: #15181d; color: var(--muted); }
+.r1 { background: #c22f28; color: #ffe3e0; }
+.r2 { background: #d3641f; color: #2f1403; }
+.r3 { background: #e08127; color: #2f1a04; }
+.r4 { background: #dfc12e; color: #2a2306; }
+.r5 { background: #efd83b; color: #2b2606; }
+.r6 { background: #aed136; color: #232905; }
+.r7 { background: #46b53a; color: #0b2407; }
 
 .row-actions { display: flex; gap: 4px; }
 .row-actions button {
@@ -239,52 +259,39 @@ td.total { font-weight: 700; color: var(--accent); }
 .row-actions button.on-list { background: var(--gold); border-color: var(--gold); color: #201a05; }
 .row-actions button.on-team { background: var(--green-dim); border-color: var(--green); color: #fff; }
 
-/* ---------- shortlist cards ---------- */
+/* ---------- shortlist ---------- */
 
-.sl-card {
-  background: var(--panel);
+.sl-filter { margin-bottom: 10px; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.legend b {
+  display: inline-block;
+  min-width: 16px;
+  text-align: center;
+  margin-right: 2px;
+  padding: 1px 4px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px 16px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
 }
 
-.sl-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
-.sl-head .name { font-size: 15px; font-weight: 700; }
-.sl-head .pos { color: var(--gold); font-weight: 700; }
-.sl-head .club, .sl-head .val { color: var(--muted); }
-.sl-head .val { color: var(--green); font-weight: 600; }
+.notes-cell { width: 100%; }
+.sl-notes { width: 100%; min-width: 130px; padding: 4px 8px; }
 
-.sl-stats { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
-.sl-stats b { display: block; text-align: center; font-size: 14px; }
-
-.sl-controls { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; flex-wrap: wrap; }
-.sl-controls select { min-width: 130px; }
-.sl-controls textarea {
-  flex: 1;
-  min-width: 240px;
-  resize: vertical;
-  min-height: 34px;
-  height: 34px;
-}
-.sl-controls .sign {
+.row-actions .sign {
   background: var(--green-dim);
-  border: 1px solid var(--green);
+  border-color: var(--green);
   color: #fff;
-  border-radius: 6px;
-  padding: 5px 12px;
-  cursor: pointer;
 }
-.sl-controls .sign:hover { background: var(--green); }
-
-.status-pill { font-size: 12px; font-weight: 700; }
-.st-interested { color: var(--accent); }
-.st-bid { color: var(--gold); }
-.st-rejected { color: var(--red); }
-.st-signed { color: var(--green); }
+.row-actions .sign:hover { background: var(--green); }
 
 /* ---------- team ---------- */
 
@@ -302,6 +309,42 @@ td.total { font-weight: 700; color: var(--accent); }
 }
 .sum-card .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
 .sum-card .v { font-size: 17px; font-weight: 700; color: var(--green); }
+
+dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+#confirm-message { margin: 0; white-space: pre-line; line-height: 1.5; }
+.dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+button.danger {
+  background: var(--red);
+  border: 1px solid var(--red);
+  color: #fff;
+  border-radius: 6px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+button.danger:hover { filter: brightness(1.1); }
+
+footer {
+  padding: 16px 20px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+footer a { color: var(--green); }
 
 td .remove {
   border: none;

@@ -15,15 +15,6 @@ const STATS = [
 const POSITIONS = ["G", "RB", "D", "LB", "M", "RW", "LW", "A"];
 const POS_ORDER = Object.fromEntries(POSITIONS.map((p, i) => [p, i]));
 
-const STATUSES = ["Interested", "Scouting", "Bid made", "Bid rejected", "Deal agreed"];
-const STATUS_CLASS = {
-  "Interested": "st-interested",
-  "Scouting": "st-interested",
-  "Bid made": "st-bid",
-  "Bid rejected": "st-rejected",
-  "Deal agreed": "st-signed",
-};
-
 const NATIONAL_LEAGUES = new Set(
   ["AFRICA", "ASIA", "EUROPE", "NORTH AMERICA", "OCEANIA", "SOUTH AMERICA"]);
 
@@ -37,9 +28,13 @@ const state = {
   players: [],
   byId: new Map(),
   team: loadLS(LS_TEAM, []),            // [id, ...]
-  shortlist: loadLS(LS_SHORTLIST, []),  // [{id, status, notes}, ...]
+  shortlist: loadLS(LS_SHORTLIST, []),  // [{id, notes}, ...]
   filters: resetFilters(),
   sort: { key: "value_gbp", dir: -1 },
+  slSort: null,   // null = order added
+  slPositions: new Set(),
+  teamSort: null, // null = formation order
+
   page: 1,
   filtered: [],
 };
@@ -99,9 +94,34 @@ function parseValueInput(text) {
 }
 
 function skillCell(v) {
-  const cls = v === 7 ? "skill-7" : v === 6 ? "skill-6" : v === 5 ? "skill-5"
-    : v === 4 ? "skill-4" : "skill-lo";
-  return `<td class="stat-col"><span class="skill ${cls}">${v}</span></td>`;
+  return `<td class="stat-col"><span class="rt r${v}">${v}</span></td>`;
+}
+
+// App-styled replacement for confirm(); resolves true on confirm.
+function confirmDialog(message, okLabel = "Remove") {
+  return new Promise((resolve) => {
+    const dlg = $("#confirm-dialog");
+    const ok = $("#confirm-ok");
+    const cancel = $("#confirm-cancel");
+    $("#confirm-message").textContent = message;
+    ok.textContent = okLabel;
+    const done = (v) => { cleanup(); if (dlg.open) dlg.close(); resolve(v); };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onEsc = () => done(false); // dialog "cancel" event (Esc key)
+    const onBackdrop = (ev) => { if (ev.target === dlg) done(false); };
+    function cleanup() {
+      ok.removeEventListener("click", onOk);
+      cancel.removeEventListener("click", onCancel);
+      dlg.removeEventListener("cancel", onEsc);
+      dlg.removeEventListener("click", onBackdrop);
+    }
+    ok.addEventListener("click", onOk);
+    cancel.addEventListener("click", onCancel);
+    dlg.addEventListener("cancel", onEsc);
+    dlg.addEventListener("click", onBackdrop);
+    dlg.showModal();
+  });
 }
 
 function shortlistEntry(id) {
@@ -193,17 +213,36 @@ function applyFilters() {
   state.page = 1;
 }
 
+function playerCompare(a, b, key, dir) {
+  let r;
+  if (key === "position") r = (POS_ORDER[a.position] ?? 99) - (POS_ORDER[b.position] ?? 99);
+  else if (["name", "nationality", "team", "league"].includes(key))
+    r = a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0;
+  else r = a[key] - b[key];
+  if (r === 0) r = a.name < b.name ? -1 : 1;
+  return r * dir;
+}
+
 function sortFiltered() {
   const { key, dir } = state.sort;
-  const str = key === "name" || key === "team" || key === "position" ||
-    key === "nationality" || key === "league";
-  state.filtered.sort((a, b) => {
-    let r;
-    if (str) r = a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0;
-    else r = a[key] - b[key];
-    if (r === 0) r = a.name < b.name ? -1 : 1;
-    return r * dir;
-  });
+  state.filtered.sort((a, b) => playerCompare(a, b, key, dir));
+}
+
+// builds a sortable <th> renderer bound to a sort state ({key, dir} | null)
+function thBuilder(sortState) {
+  return (key, label, cls = "", title = "") => {
+    const sorted = sortState && sortState.key === key;
+    const arrow = sorted ? (sortState.dir === 1 ? " ▲" : " ▼") : "";
+    return `<th data-sort="${key}" class="${cls}${sorted ? " sorted" : ""}"` +
+      (title ? ` title="${title}"` : "") + `>${label}${arrow}</th>`;
+  };
+}
+
+// shared click-to-sort behaviour: numeric columns start descending
+function nextSort(current, key) {
+  if (current && current.key === key) return { key, dir: current.dir * -1 };
+  const numeric = key === "value_gbp" || key === "total" || STATS.some((s) => s.key === key);
+  return { key, dir: numeric ? -1 : 1 };
 }
 
 // ---------------------------------------------------------------- players tab
@@ -272,37 +311,47 @@ function renderPlayers() {
 
 function renderShortlist() {
   $("#shortlist-count").textContent = state.shortlist.length;
-  const wrap = $("#shortlist-list");
+  const entries = state.shortlist.filter((e) => {
+    const p = state.byId.get(e.id);
+    if (!p) return false;
+    return !state.slPositions.size || state.slPositions.has(p.position);
+  });
+  $("#shortlist-empty").hidden = state.shortlist.length > 0;
+  $("#sl-positions").parentElement.hidden = !state.shortlist.length;
 
-  if (!state.shortlist.length) {
-    wrap.innerHTML = `<p class="hint">Nothing here yet — use the <strong>☆ List</strong> button in the Players tab.</p>`;
-    return;
+  if (state.slSort) {
+    const { key, dir } = state.slSort;
+    entries.sort((ea, eb) =>
+      playerCompare(state.byId.get(ea.id), state.byId.get(eb.id), key, dir));
   }
 
-  wrap.innerHTML = state.shortlist.map((e) => {
+  const th = thBuilder(state.slSort);
+
+  $("#shortlist-table thead").innerHTML = entries.length ? `<tr>
+    ${th("name", "Player")}${th("position", "Pos")}${th("nationality", "Nat")}
+    ${th("team", "Club")}${th("league", "League")}${th("value_gbp", "Value")}
+    ${STATS.map((s) => th(s.key, s.label, "stat-col", s.name)).join("")}
+    ${th("total", "Tot", "stat-col", "Total of all seven ratings")}
+    <th>Notes</th><th></th></tr>` : "";
+
+  $("#shortlist-table tbody").innerHTML = entries.map((e) => {
     const p = state.byId.get(e.id);
-    if (!p) return "";
-    return `<div class="sl-card" data-id="${esc(e.id)}">
-      <div class="sl-head">
-        <span class="name">${esc(p.name)}</span>
-        <span class="pos">${esc(p.position)}</span>
-        <span class="club">${esc(p.team)} · ${esc(p.league)} · ${esc(p.nationality)}</span>
-        <span class="val">${fmtValue(p.value_gbp)}</span>
-        <span class="status-pill ${STATUS_CLASS[e.status] || ""}">${esc(e.status)}</span>
-      </div>
-      <div class="sl-stats">${STATS.map((s) =>
-        `<span title="${s.name}">${s.label}<b>${p[s.key]}</b></span>`).join("")}
-        <span title="Total of all seven ratings">Tot<b>${p.total}</b></span>
-      </div>
-      <div class="sl-controls">
-        <select class="sl-status">${STATUSES.map((s) =>
-          `<option${s === e.status ? " selected" : ""}>${s}</option>`).join("")}
-        </select>
-        <textarea class="sl-notes" placeholder="Notes — bids made, asking price, alternatives…">${esc(e.notes || "")}</textarea>
-        <button class="sign" title="Move into My Team">Sign ➜ Team</button>
-        <button class="ghost sl-remove">Remove</button>
-      </div>
-    </div>`;
+    return `<tr data-id="${esc(e.id)}">
+      <td><span class="name">${esc(p.name)}</span> <span class="sub">#${esc(p.shirt)}</span></td>
+      <td><b>${esc(p.position)}</b></td>
+      <td>${esc(p.nationality)}</td>
+      <td>${esc(p.team)}</td>
+      <td class="sub">${esc(p.league)}</td>
+      <td class="num">${fmtValue(p.value_gbp)}</td>
+      ${STATS.map((s) => skillCell(p[s.key])).join("")}
+      <td class="stat-col total">${p.total}</td>
+      <td class="notes-cell"><input type="text" class="sl-notes" value="${esc(e.notes || "")}"
+        placeholder="Bids, asking price…"></td>
+      <td><div class="row-actions">
+        <button class="sign" title="Move into My Team">Signed ➜</button>
+        <button class="sl-remove" title="Remove from shortlist">✕</button>
+      </div></td>
+    </tr>`;
   }).join("");
 }
 
@@ -313,9 +362,11 @@ function renderTeam() {
   const squad = state.team
     .map((id) => state.byId.get(id))
     .filter(Boolean)
-    .sort((a, b) =>
-      (POS_ORDER[a.position] ?? 99) - (POS_ORDER[b.position] ?? 99) ||
-      (a.name < b.name ? -1 : 1));
+    .sort(state.teamSort
+      ? (a, b) => playerCompare(a, b, state.teamSort.key, state.teamSort.dir)
+      : (a, b) =>
+        (POS_ORDER[a.position] ?? 99) - (POS_ORDER[b.position] ?? 99) ||
+        (a.name < b.name ? -1 : 1));
 
   $("#team-empty-hint").hidden = squad.length > 0;
 
@@ -337,10 +388,12 @@ function renderTeam() {
       <div class="v">${(squad.reduce((t, p) => t + p[s.key], 0) / squad.length).toFixed(1)}</div></div>`).join("")}
   ` : "";
 
+  const th = thBuilder(state.teamSort);
   $("#team-table thead").innerHTML = squad.length ? `<tr>
-    <th>Player</th><th>Pos</th><th>Nat</th><th>Club</th><th>Value</th>
-    ${STATS.map((s) => `<th class="stat-col" title="${s.name}">${s.label}</th>`).join("")}
-    <th class="stat-col" title="Total of all seven ratings">Tot</th>
+    ${th("name", "Player")}${th("position", "Pos")}${th("nationality", "Nat")}
+    ${th("team", "Club")}${th("value_gbp", "Value")}
+    ${STATS.map((s) => th(s.key, s.label, "stat-col", s.name)).join("")}
+    ${th("total", "Tot", "stat-col", "Total of all seven ratings")}
     <th></th></tr>` : "";
 
   $("#team-table tbody").innerHTML = squad.map((p) => `
@@ -361,7 +414,7 @@ function renderTeam() {
 function toggleShortlist(id) {
   const i = state.shortlist.findIndex((e) => e.id === id);
   if (i >= 0) state.shortlist.splice(i, 1);
-  else state.shortlist.push({ id, status: "Interested", notes: "" });
+  else state.shortlist.push({ id, notes: "" });
   saveLS();
   renderShortlist();
   renderPlayersBody();
@@ -388,9 +441,11 @@ function signPlayer(id) {
 // ---------------------------------------------------------------- UI setup
 
 function buildFilterControls() {
-  // position toggles
-  $("#f-positions").innerHTML = POSITIONS.map((p) =>
+  // position toggles (players tab + shortlist tab)
+  const posButtons = POSITIONS.map((p) =>
     `<button data-pos="${p}" title="${p}">${p}</button>`).join("");
+  $("#f-positions").innerHTML = posButtons;
+  $("#sl-positions").innerHTML = posButtons;
 
   // per-stat min/max
   const opts = (blank) => `<option value="">${blank}</option>` +
@@ -403,6 +458,11 @@ function buildFilterControls() {
         <select class="st-max" title="${s.name} — maximum">${opts("Max")}</select>
       </span>
     </span>`).join("");
+
+  // ratings legend (shortlist tab)
+  $("#stats-legend").innerHTML =
+    STATS.map((s) => `<span><b>${s.label}</b> ${s.name}</span>`).join("") +
+    `<span><b>Tot</b> Total of all seven</span>`;
 
   // league / nationality dropdowns
   const leagues = [...new Set(state.players.map((p) => p.league))].sort();
@@ -424,6 +484,7 @@ function bindEvents() {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
     document.querySelectorAll(".panel").forEach((p) =>
       (p.hidden = p.id !== "panel-" + btn.dataset.tab));
+    history.replaceState(null, "", "#" + btn.dataset.tab);
   });
 
   // text/select filters
@@ -521,27 +582,51 @@ function bindEvents() {
     else if (ev.target.closest(".act-team")) toggleTeam(row.dataset.id);
   });
 
-  // shortlist card actions
-  $("#shortlist-list").addEventListener("click", (ev) => {
-    const card = ev.target.closest(".sl-card");
-    if (!card) return;
-    if (ev.target.closest(".sign")) signPlayer(card.dataset.id);
-    else if (ev.target.closest(".sl-remove")) toggleShortlist(card.dataset.id);
+  // shortlist position filter
+  $("#sl-positions").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button");
+    if (!btn) return;
+    const pos = btn.dataset.pos;
+    if (state.slPositions.has(pos)) state.slPositions.delete(pos);
+    else state.slPositions.add(pos);
+    btn.classList.toggle("on");
+    renderShortlist();
   });
-  $("#shortlist-list").addEventListener("change", (ev) => {
-    const card = ev.target.closest(".sl-card");
-    if (!card) return;
-    const entry = shortlistEntry(card.dataset.id);
-    if (entry && ev.target.classList.contains("sl-status")) {
-      entry.status = ev.target.value;
-      saveLS();
-      renderShortlist();
+
+  // shortlist sorting
+  $("#shortlist-table thead").addEventListener("click", (ev) => {
+    const th = ev.target.closest("th[data-sort]");
+    if (!th) return;
+    state.slSort = nextSort(state.slSort, th.dataset.sort);
+    renderShortlist();
+  });
+
+  // team sorting
+  $("#team-table thead").addEventListener("click", (ev) => {
+    const th = ev.target.closest("th[data-sort]");
+    if (!th) return;
+    state.teamSort = nextSort(state.teamSort, th.dataset.sort);
+    renderTeam();
+  });
+
+  // shortlist row actions
+  $("#shortlist-table tbody").addEventListener("click", async (ev) => {
+    const row = ev.target.closest("tr[data-id]");
+    if (!row) return;
+    const id = row.dataset.id;
+    if (ev.target.closest(".sign")) signPlayer(id);
+    else if (ev.target.closest(".sl-remove")) {
+      const p = state.byId.get(id);
+      const entry = shortlistEntry(id);
+      const msg = `Remove ${p ? p.name : "this player"} from your shortlist?` +
+        (entry && entry.notes ? "\nYour notes for them will be lost." : "");
+      if (await confirmDialog(msg)) toggleShortlist(id);
     }
   });
-  $("#shortlist-list").addEventListener("input", (ev) => {
+  $("#shortlist-table tbody").addEventListener("input", (ev) => {
     if (!ev.target.classList.contains("sl-notes")) return;
-    const card = ev.target.closest(".sl-card");
-    const entry = shortlistEntry(card.dataset.id);
+    const row = ev.target.closest("tr[data-id]");
+    const entry = shortlistEntry(row.dataset.id);
     if (entry) {
       entry.notes = ev.target.value;
       saveLS();
@@ -579,16 +664,12 @@ function bindEvents() {
     }
     const team = data.team.filter((id) => state.byId.has(id));
     const shortlist = data.shortlist.filter((e) => e && state.byId.has(e.id))
-      .map((e) => ({
-        id: e.id,
-        status: STATUSES.includes(e.status) ? e.status : "Interested",
-        notes: typeof e.notes === "string" ? e.notes : "",
-      }));
+      .map((e) => ({ id: e.id, notes: typeof e.notes === "string" ? e.notes : "" }));
     const dropped = (data.team.length - team.length) + (data.shortlist.length - shortlist.length);
-    if (!confirm(
+    if (!await confirmDialog(
       "Import " + team.length + " team player(s) and " + shortlist.length +
       " shortlist entr(ies)?" + (dropped ? "\n(" + dropped + " unrecognised entries will be skipped.)" : "") +
-      "\n\nThis replaces your current team and shortlist."
+      "\n\nThis replaces your current team and shortlist.", "Import"
     )) return;
     state.team = team;
     state.shortlist = shortlist;
@@ -599,10 +680,13 @@ function bindEvents() {
   });
 
   // team removals
-  $("#team-table tbody").addEventListener("click", (ev) => {
+  $("#team-table tbody").addEventListener("click", async (ev) => {
     if (!ev.target.closest(".remove")) return;
     const row = ev.target.closest("tr[data-id]");
-    if (row) toggleTeam(row.dataset.id);
+    if (!row) return;
+    const p = state.byId.get(row.dataset.id);
+    if (await confirmDialog(`Remove ${p ? p.name : "this player"} from your team?`))
+      toggleTeam(row.dataset.id);
   });
 }
 
@@ -625,4 +709,7 @@ function bindEvents() {
 
   $("#loading").hidden = true;
   $("#panel-players").hidden = false;
+
+  const tab = location.hash.slice(1);
+  if (["shortlist", "team"].includes(tab)) $(`#tabs [data-tab="${tab}"]`).click();
 })();

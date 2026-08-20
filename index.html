@@ -1,93 +1,177 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SWOS Transfers</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-<header>
-  <h1>⚽ SWOS Transfers</h1>
-  <nav id="tabs">
-    <button class="tab active" data-tab="players">Players</button>
-    <button class="tab" data-tab="shortlist">Shortlist <span class="badge" id="shortlist-count">0</span></button>
-    <button class="tab" data-tab="team">My Team <span class="badge" id="team-count">0</span></button>
-  </nav>
-  <div class="data-actions">
-    <button id="btn-export" class="ghost" title="Download your team, shortlist and notes as a JSON file">Export</button>
-    <button id="btn-import" class="ghost" title="Restore team, shortlist and notes from an exported JSON file">Import</button>
-    <input type="file" id="import-file" accept=".json,application/json" hidden>
-  </div>
-</header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SWOS Transfers</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>⚽ SWOS Transfers</h1>
+      <nav id="tabs">
+        <button class="tab active" data-tab="players">Players</button>
+        <button class="tab" data-tab="shortlist">
+          Shortlist <span class="badge" id="shortlist-count">0</span>
+        </button>
+        <button class="tab" data-tab="team">
+          My Team <span class="badge" id="team-count">0</span>
+        </button>
+      </nav>
+      <div class="data-actions">
+        <button
+          id="btn-export"
+          class="ghost"
+          title="Download your team, shortlist and notes as a JSON file"
+        >
+          Export
+        </button>
+        <button
+          id="btn-import"
+          class="ghost"
+          title="Restore team, shortlist and notes from an exported JSON file"
+        >
+          Import
+        </button>
+        <input
+          type="file"
+          id="import-file"
+          accept=".json,application/json"
+          hidden
+        />
+      </div>
+    </header>
 
-<main>
-  <div id="loading">Loading player database…</div>
+    <main>
+      <div id="loading">Loading player database…</div>
 
-  <!-- ==================== PLAYERS ==================== -->
-  <section id="panel-players" class="panel" hidden>
-    <div class="filters">
-      <div class="filter-row">
-        <div class="seg" id="f-scope" title="Club sides, national squads, or both">
-          <button data-scope="club" class="on">Clubs</button>
-          <button data-scope="national">National</button>
-          <button data-scope="both">Both</button>
+      <!-- ==================== PLAYERS ==================== -->
+      <section id="panel-players" class="panel" hidden>
+        <div class="filters">
+          <div class="filter-row">
+            <div
+              class="seg"
+              id="f-scope"
+              title="Club sides, national squads, or both"
+            >
+              <button data-scope="club" class="on">Clubs</button>
+              <button data-scope="national">National</button>
+              <button data-scope="both">Both</button>
+            </div>
+            <input
+              type="search"
+              id="f-search"
+              placeholder="Search name, club or nationality…"
+              autocomplete="off"
+            />
+            <select id="f-league">
+              <option value="">All leagues</option>
+            </select>
+            <select id="f-nation">
+              <option value="">All nationalities</option>
+            </select>
+            <input
+              type="text"
+              id="f-minval"
+              class="val-input"
+              placeholder="Min £ (e.g. 500K)"
+            />
+            <input
+              type="text"
+              id="f-maxval"
+              class="val-input"
+              placeholder="Max £ (e.g. 5M)"
+            />
+          </div>
+          <div class="filter-row">
+            <div
+              class="pos-buttons"
+              id="f-positions"
+              title="Filter by position"
+            ></div>
+            <div class="stat-filters" id="f-stats"></div>
+            <button id="f-reset" class="ghost">Reset</button>
+          </div>
         </div>
-        <input type="search" id="f-search" placeholder="Search name, club or nationality…" autocomplete="off">
-        <select id="f-league"><option value="">All leagues</option></select>
-        <select id="f-nation"><option value="">All nationalities</option></select>
-        <input type="text" id="f-minval" class="val-input" placeholder="Min £ (e.g. 500K)">
-        <input type="text" id="f-maxval" class="val-input" placeholder="Max £ (e.g. 5M)">
-      </div>
-      <div class="filter-row">
-        <div class="pos-buttons" id="f-positions" title="Filter by position"></div>
-        <div class="stat-filters" id="f-stats"></div>
-        <button id="f-reset" class="ghost">Reset</button>
-      </div>
-    </div>
-    <div class="results-bar">
-      <span id="result-count"></span>
-      <div class="pager">
-        <button class="ghost pg-prev">‹ Prev</button>
-        <span class="pg-info"></span>
-        <button class="ghost pg-next">Next ›</button>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table id="players-table">
-        <thead></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div class="results-bar">
-      <span></span>
-      <div class="pager">
-        <button class="ghost pg-prev">‹ Prev</button>
-        <span class="pg-info"></span>
-        <button class="ghost pg-next">Next ›</button>
-      </div>
-    </div>
-  </section>
+        <div class="results-bar">
+          <span id="result-count"></span>
+          <div class="pager">
+            <button class="ghost pg-prev">‹ Prev</button>
+            <span class="pg-info"></span>
+            <button class="ghost pg-next">Next ›</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="players-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="results-bar">
+          <span></span>
+          <div class="pager">
+            <button class="ghost pg-prev">‹ Prev</button>
+            <span class="pg-info"></span>
+            <button class="ghost pg-next">Next ›</button>
+          </div>
+        </div>
+      </section>
 
-  <!-- ==================== SHORTLIST ==================== -->
-  <section id="panel-shortlist" class="panel" hidden>
-    <p class="hint">Track players you're interested in. Set a status and keep notes on bids. Once you've bought a player, hit <strong>Sign</strong> to move them into your team.</p>
-    <div id="shortlist-list"></div>
-  </section>
+      <!-- ==================== SHORTLIST ==================== -->
+      <section id="panel-shortlist" class="panel" hidden>
+        <p class="hint">
+          Track players you're interested in and keep notes on bids. Once you've
+          bought a player, hit <strong>Signed</strong> to move them into your
+          team.
+        </p>
+        <div class="filter-row sl-filter">
+          <div class="pos-buttons" id="sl-positions" title="Filter by position"></div>
+        </div>
+        <div class="table-wrap">
+          <table id="shortlist-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="shortlist-empty" hidden>
+          Nothing here yet — use the <strong>☆ List</strong> button in the
+          Players tab.
+        </p>
+        <div class="legend" id="stats-legend"></div>
+      </section>
 
-  <!-- ==================== MY TEAM ==================== -->
-  <section id="panel-team" class="panel" hidden>
-    <div id="team-summary"></div>
-    <div class="table-wrap">
-      <table id="team-table">
-        <thead></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p class="hint" id="team-empty-hint" hidden>Your squad is empty. Find your current players in the <strong>Players</strong> tab and add them with the <strong>+ Team</strong> button.</p>
-  </section>
-</main>
+      <!-- ==================== MY TEAM ==================== -->
+      <section id="panel-team" class="panel" hidden>
+        <div id="team-summary"></div>
+        <div class="table-wrap">
+          <table id="team-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="team-empty-hint" hidden>
+          Your squad is empty. Find your current players in the
+          <strong>Players</strong> tab and add them with the
+          <strong>+ Team</strong> button.
+        </p>
+      </section>
+    </main>
 
-<script src="app.js"></script>
-</body>
+    <footer>
+      Inspired by the legendary
+      <a href="https://swos.gazchap.com" target="_blank" rel="noopener"
+        >GazChap's swos database</a
+      >
+    </footer>
+
+    <dialog id="confirm-dialog">
+      <p id="confirm-message"></p>
+      <div class="dlg-actions">
+        <button class="ghost" id="confirm-cancel">Cancel</button>
+        <button class="danger" id="confirm-ok">Remove</button>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
 </html>
