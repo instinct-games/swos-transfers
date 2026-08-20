@@ -21,14 +21,18 @@ const NATIONAL_LEAGUES = new Set(
 const PAGE_SIZE = 50;
 const LS_TEAM = "swos.team";
 const LS_SHORTLIST = "swos.shortlist";
+const LS_NOTES = "swos.notes";
+const LS_HISTORY = "swos.history";
 
 // ---------------------------------------------------------------- state
 
 const state = {
   players: [],
   byId: new Map(),
-  team: loadLS(LS_TEAM, []),            // [id, ...]
-  shortlist: loadLS(LS_SHORTLIST, []),  // [{id, notes}, ...]
+  team: loadLS(LS_TEAM, []),            // [playerId, ...]
+  shortlist: loadLS(LS_SHORTLIST, []),  // [playerId, ...]
+  notes: loadLS(LS_NOTES, {}),          // { playerId: "text" }
+  history: loadLS(LS_HISTORY, []),      // [{sid, name, description, createdAt, team: [playerId]}]
   filters: resetFilters(),
   sort: { key: "value_gbp", dir: -1 },
   slSort: null,   // null = order added
@@ -56,7 +60,8 @@ function resetFilters() {
 function loadLS(key, fallback) {
   try {
     const v = JSON.parse(localStorage.getItem(key));
-    return Array.isArray(v) ? v : fallback;
+    if (Array.isArray(fallback)) return Array.isArray(v) ? v : fallback;
+    return v && typeof v === "object" && !Array.isArray(v) ? v : fallback;
   } catch {
     return fallback;
   }
@@ -65,6 +70,8 @@ function loadLS(key, fallback) {
 function saveLS() {
   localStorage.setItem(LS_TEAM, JSON.stringify(state.team));
   localStorage.setItem(LS_SHORTLIST, JSON.stringify(state.shortlist));
+  localStorage.setItem(LS_NOTES, JSON.stringify(state.notes));
+  localStorage.setItem(LS_HISTORY, JSON.stringify(state.history));
 }
 
 // ---------------------------------------------------------------- helpers
@@ -97,6 +104,22 @@ function skillCell(v) {
   return `<td class="stat-col"><span class="rt r${v}">${v}</span></td>`;
 }
 
+const NOTE_ICON =
+  `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"
+     stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M3 2.5h10a.5.5 0 0 1 .5.5v6.5L9.5 14H3a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5z"/>
+    <path d="M13.5 9.5H10a.5.5 0 0 0-.5.5v4"/>
+    <path d="M5 6h6M5 8.5h3.5"/>
+  </svg>`;
+
+// Name cell with the note icon — used by all three tables.
+function nameCell(p) {
+  const note = noteFor(p.id);
+  return `<td><span class="name">${esc(p.name)}</span>
+    <button class="note-btn ${note ? "on-note" : ""}"
+      title="${note ? esc(note) : "Add note"}">${NOTE_ICON}</button></td>`;
+}
+
 // App-styled replacement for confirm(); resolves true on confirm.
 function confirmDialog(message, okLabel = "Remove") {
   return new Promise((resolve) => {
@@ -124,12 +147,26 @@ function confirmDialog(message, okLabel = "Remove") {
   });
 }
 
-function shortlistEntry(id) {
-  return state.shortlist.find((e) => e.id === id);
+function onShortlist(id) {
+  return state.shortlist.includes(id);
 }
 
 function inTeam(id) {
   return state.team.includes(id);
+}
+
+function noteFor(id) {
+  return state.notes[id] || "";
+}
+
+function setNote(id, text) {
+  if (text.trim()) state.notes[id] = text;
+  else delete state.notes[id];
+  saveLS();
+}
+
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 // ---------------------------------------------------------------- data load
@@ -176,11 +213,25 @@ async function loadPlayers() {
     p.total = p.passing + p.velocity + p.heading + p.tackling +
       p.ball_control + p.speed + p.finishing;
     p.national = NATIONAL_LEAGUES.has(p.league);
-    p.id = p.name + "|" + p.team + "|" + p.shirt;
     p.search = (p.name + " " + p.team + " " + p.nationality).toLowerCase();
     players.push(p);
+  }
+
+  // Assign unique ids: club rows are name-club-country (country = the club's
+  // league), national rows are name-country (the team IS the country). Shirt
+  // number is appended only for same-name-same-club collisions.
+  const taken = new Set();
+  for (const p of players) {
+    let id = p.national
+      ? slugify(p.name + " " + p.team)
+      : slugify(p.name + " " + p.team + " " + p.league);
+    if (taken.has(id)) id += "-" + p.shirt;
+    while (taken.has(id)) id += "-x";
+    taken.add(id);
+    p.id = id;
     state.byId.set(p.id, p);
   }
+
   state.players = players;
   return true;
 }
@@ -274,10 +325,10 @@ function renderPlayersBody() {
   const rows = state.filtered.slice(start, start + PAGE_SIZE);
 
   $("#players-table tbody").innerHTML = rows.map((p) => {
-    const onList = !!shortlistEntry(p.id);
+    const onList = onShortlist(p.id);
     const onTeam = inTeam(p.id);
     return `<tr class="${onTeam ? "in-team" : ""}" data-id="${esc(p.id)}">
-      <td><span class="name">${esc(p.name)}</span> <span class="sub">#${esc(p.shirt)}</span></td>
+      ${nameCell(p)}
       <td><b>${esc(p.position)}</b></td>
       <td>${esc(p.nationality)}</td>
       <td>${esc(p.team)}</td>
@@ -311,18 +362,15 @@ function renderPlayers() {
 
 function renderShortlist() {
   $("#shortlist-count").textContent = state.shortlist.length;
-  const entries = state.shortlist.filter((e) => {
-    const p = state.byId.get(e.id);
-    if (!p) return false;
-    return !state.slPositions.size || state.slPositions.has(p.position);
-  });
+  const entries = state.shortlist
+    .map((id) => state.byId.get(id))
+    .filter((p) => p && (!state.slPositions.size || state.slPositions.has(p.position)));
   $("#shortlist-empty").hidden = state.shortlist.length > 0;
   $("#sl-positions").parentElement.hidden = !state.shortlist.length;
 
   if (state.slSort) {
     const { key, dir } = state.slSort;
-    entries.sort((ea, eb) =>
-      playerCompare(state.byId.get(ea.id), state.byId.get(eb.id), key, dir));
+    entries.sort((a, b) => playerCompare(a, b, key, dir));
   }
 
   const th = thBuilder(state.slSort);
@@ -332,12 +380,11 @@ function renderShortlist() {
     ${th("team", "Club")}${th("league", "League")}${th("value_gbp", "Value")}
     ${STATS.map((s) => th(s.key, s.label, "stat-col", s.name)).join("")}
     ${th("total", "Tot", "stat-col", "Total of all seven ratings")}
-    <th>Notes</th><th></th></tr>` : "";
+    <th></th></tr>` : "";
 
-  $("#shortlist-table tbody").innerHTML = entries.map((e) => {
-    const p = state.byId.get(e.id);
-    return `<tr data-id="${esc(e.id)}">
-      <td><span class="name">${esc(p.name)}</span> <span class="sub">#${esc(p.shirt)}</span></td>
+  $("#shortlist-table tbody").innerHTML = entries.map((p) => `
+    <tr data-id="${esc(p.id)}">
+      ${nameCell(p)}
       <td><b>${esc(p.position)}</b></td>
       <td>${esc(p.nationality)}</td>
       <td>${esc(p.team)}</td>
@@ -345,14 +392,11 @@ function renderShortlist() {
       <td class="num">${fmtValue(p.value_gbp)}</td>
       ${STATS.map((s) => skillCell(p[s.key])).join("")}
       <td class="stat-col total">${p.total}</td>
-      <td class="notes-cell"><input type="text" class="sl-notes" value="${esc(e.notes || "")}"
-        placeholder="Bids, asking price…"></td>
       <td><div class="row-actions">
         <button class="sign" title="Move into My Team">Signed ➜</button>
         <button class="sl-remove" title="Remove from shortlist">✕</button>
       </div></td>
-    </tr>`;
-  }).join("");
+    </tr>`).join("");
 }
 
 // ---------------------------------------------------------------- team tab
@@ -371,21 +415,10 @@ function renderTeam() {
   $("#team-empty-hint").hidden = squad.length > 0;
 
   const totalVal = squad.reduce((s, p) => s + p.value_gbp, 0);
-  const posCounts = { G: 0, DEF: 0, MID: 0, ATT: 0 };
-  for (const p of squad) {
-    if (p.position === "G") posCounts.G++;
-    else if (["D", "RB", "LB"].includes(p.position)) posCounts.DEF++;
-    else if (["M", "RW", "LW"].includes(p.position)) posCounts.MID++;
-    else posCounts.ATT++;
-  }
 
   $("#team-summary").innerHTML = squad.length ? `
     <div class="sum-card"><div class="k">Squad</div><div class="v">${squad.length}</div></div>
     <div class="sum-card"><div class="k">Total value</div><div class="v">${fmtValue(totalVal)}</div></div>
-    <div class="sum-card"><div class="k">GK / DEF / MID / ATT</div>
-      <div class="v">${posCounts.G} / ${posCounts.DEF} / ${posCounts.MID} / ${posCounts.ATT}</div></div>
-    ${STATS.map((s) => `<div class="sum-card"><div class="k" title="${s.name}">avg ${s.label}</div>
-      <div class="v">${(squad.reduce((t, p) => t + p[s.key], 0) / squad.length).toFixed(1)}</div></div>`).join("")}
   ` : "";
 
   const th = thBuilder(state.teamSort);
@@ -398,7 +431,7 @@ function renderTeam() {
 
   $("#team-table tbody").innerHTML = squad.map((p) => `
     <tr data-id="${esc(p.id)}">
-      <td><span class="name">${esc(p.name)}</span> <span class="sub">#${esc(p.shirt)}</span></td>
+      ${nameCell(p)}
       <td><b>${esc(p.position)}</b></td>
       <td>${esc(p.nationality)}</td>
       <td>${esc(p.team)} <span class="sub">· ${esc(p.league)}</span></td>
@@ -407,14 +440,91 @@ function renderTeam() {
       <td class="stat-col total">${p.total}</td>
       <td><button class="remove" title="Remove from team">✕</button></td>
     </tr>`).join("");
+
+  renderHistory();
+}
+
+// ---------------------------------------------------------------- team history
+
+function renderHistory() {
+  $("#btn-snapshot").disabled = !state.team.length;
+  $("#history-empty").hidden = state.history.length > 0;
+
+  $("#history-list").innerHTML = state.history.map((s) => {
+    const squad = s.team.map((id) => state.byId.get(id)).filter(Boolean)
+      .sort((a, b) =>
+        (POS_ORDER[a.position] ?? 99) - (POS_ORDER[b.position] ?? 99) ||
+        (a.name < b.name ? -1 : 1));
+    const value = squad.reduce((t, p) => t + p.value_gbp, 0);
+    const when = new Date(s.createdAt).toLocaleDateString(undefined,
+      { day: "numeric", month: "short", year: "numeric" });
+    return `<div class="snap-card" data-sid="${esc(s.sid)}">
+      <div class="snap-head">
+        <span class="snap-name">${esc(s.name)}</span>
+        <span class="sub">${when} · ${squad.length} players · ${fmtValue(value)}</span>
+        <span class="snap-actions">
+          <button class="snap-edit ghost" title="Edit name / description">✎ Edit</button>
+          <button class="snap-delete ghost" title="Delete snapshot">✕</button>
+        </span>
+      </div>
+      ${s.description ? `<p class="snap-desc">${esc(s.description)}</p>` : ""}
+      <details>
+        <summary>Squad</summary>
+        <div class="table-wrap snap-wrap">
+          <table class="snap-table">
+            <thead><tr><th>Pos</th><th>Player</th><th>Club</th><th>Value</th>
+              ${STATS.map((st) => `<th class="stat-col" title="${st.name}">${st.label}</th>`).join("")}
+              <th class="stat-col" title="Total of all seven ratings">Tot</th></tr></thead>
+            <tbody>${squad.map((p) => `<tr>
+              <td><b>${esc(p.position)}</b></td>
+              <td><span class="name">${esc(p.name)}</span></td>
+              <td class="sub">${esc(p.team)}</td>
+              <td class="num">${fmtValue(p.value_gbp)}</td>
+              ${STATS.map((st) => skillCell(p[st.key])).join("")}
+              <td class="stat-col total">${p.total}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </details>
+    </div>`;
+  }).join("");
+}
+
+// Modal for creating/editing a snapshot; calls onSave(name, description).
+function snapDialog(title, name, description, onSave) {
+  const dlg = $("#snap-dialog");
+  const nameEl = $("#snap-name");
+  const descEl = $("#snap-desc");
+  $("#snap-title").textContent = title;
+  nameEl.value = name;
+  descEl.value = description;
+  const save = $("#snap-save");
+  const cancel = $("#snap-cancel");
+  const done = (commit) => {
+    cleanup();
+    if (dlg.open) dlg.close();
+    if (commit) onSave(nameEl.value.trim(), descEl.value.trim());
+  };
+  const onOk = () => done(true);
+  const onCancel = () => done(false);
+  const onEsc = () => done(false);
+  function cleanup() {
+    save.removeEventListener("click", onOk);
+    cancel.removeEventListener("click", onCancel);
+    dlg.removeEventListener("cancel", onEsc);
+  }
+  save.addEventListener("click", onOk);
+  cancel.addEventListener("click", onCancel);
+  dlg.addEventListener("cancel", onEsc);
+  dlg.showModal();
 }
 
 // ---------------------------------------------------------------- mutations
 
 function toggleShortlist(id) {
-  const i = state.shortlist.findIndex((e) => e.id === id);
+  const i = state.shortlist.indexOf(id);
   if (i >= 0) state.shortlist.splice(i, 1);
-  else state.shortlist.push({ id, notes: "" });
+  else state.shortlist.push(id);
   saveLS();
   renderShortlist();
   renderPlayersBody();
@@ -431,11 +541,43 @@ function toggleTeam(id) {
 
 function signPlayer(id) {
   if (!inTeam(id)) state.team.push(id);
-  state.shortlist = state.shortlist.filter((e) => e.id !== id);
+  state.shortlist = state.shortlist.filter((sid) => sid !== id);
   saveLS();
   renderShortlist();
   renderTeam();
   renderPlayersBody();
+}
+
+// Modal editor for a player's note (used from the Players tab).
+function noteDialog(p) {
+  const dlg = $("#note-dialog");
+  const text = $("#note-text");
+  $("#note-title").textContent = `Notes — ${p.name} (${p.team})`;
+  text.value = noteFor(p.id);
+  const save = $("#note-save");
+  const cancel = $("#note-cancel");
+  const done = (commit) => {
+    cleanup();
+    if (dlg.open) dlg.close();
+    if (commit) {
+      setNote(p.id, text.value);
+      renderPlayersBody();
+      renderShortlist();
+      renderTeam();
+    }
+  };
+  const onSave = () => done(true);
+  const onCancel = () => done(false);
+  const onEsc = () => done(false);
+  function cleanup() {
+    save.removeEventListener("click", onSave);
+    cancel.removeEventListener("click", onCancel);
+    dlg.removeEventListener("cancel", onEsc);
+  }
+  save.addEventListener("click", onSave);
+  cancel.addEventListener("click", onCancel);
+  dlg.addEventListener("cancel", onEsc);
+  dlg.showModal();
 }
 
 // ---------------------------------------------------------------- UI setup
@@ -574,8 +716,18 @@ function bindEvents() {
   document.querySelectorAll(".pg-next").forEach((b) =>
     b.addEventListener("click", () => { state.page++; renderPlayersBody(); }));
 
+  // note icons (all tables)
+  const noteClickHandler = (ev) => {
+    if (!ev.target.closest(".note-btn")) return false;
+    const row = ev.target.closest("tr[data-id]");
+    const p = row && state.byId.get(row.dataset.id);
+    if (p) noteDialog(p);
+    return true;
+  };
+
   // row actions
   $("#players-table tbody").addEventListener("click", (ev) => {
+    if (noteClickHandler(ev)) return;
     const row = ev.target.closest("tr[data-id]");
     if (!row) return;
     if (ev.target.closest(".act-list")) toggleShortlist(row.dataset.id);
@@ -611,25 +763,15 @@ function bindEvents() {
 
   // shortlist row actions
   $("#shortlist-table tbody").addEventListener("click", async (ev) => {
+    if (noteClickHandler(ev)) return;
     const row = ev.target.closest("tr[data-id]");
     if (!row) return;
     const id = row.dataset.id;
     if (ev.target.closest(".sign")) signPlayer(id);
     else if (ev.target.closest(".sl-remove")) {
       const p = state.byId.get(id);
-      const entry = shortlistEntry(id);
-      const msg = `Remove ${p ? p.name : "this player"} from your shortlist?` +
-        (entry && entry.notes ? "\nYour notes for them will be lost." : "");
-      if (await confirmDialog(msg)) toggleShortlist(id);
-    }
-  });
-  $("#shortlist-table tbody").addEventListener("input", (ev) => {
-    if (!ev.target.classList.contains("sl-notes")) return;
-    const row = ev.target.closest("tr[data-id]");
-    const entry = shortlistEntry(row.dataset.id);
-    if (entry) {
-      entry.notes = ev.target.value;
-      saveLS();
+      if (await confirmDialog(`Remove ${p ? p.name : "this player"} from your shortlist?`))
+        toggleShortlist(id);
     }
   });
 
@@ -640,6 +782,8 @@ function bindEvents() {
       exportedAt: new Date().toISOString(),
       team: state.team,
       shortlist: state.shortlist,
+      notes: state.notes,
+      history: state.history,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -663,24 +807,80 @@ function bindEvents() {
       return;
     }
     const team = data.team.filter((id) => state.byId.has(id));
-    const shortlist = data.shortlist.filter((e) => e && state.byId.has(e.id))
-      .map((e) => ({ id: e.id, notes: typeof e.notes === "string" ? e.notes : "" }));
+    const shortlist = data.shortlist.filter((id) => state.byId.has(id));
+    const notes = {};
+    if (data.notes && typeof data.notes === "object" && !Array.isArray(data.notes)) {
+      for (const [id, text] of Object.entries(data.notes))
+        if (state.byId.has(id) && typeof text === "string" && text.trim()) notes[id] = text;
+    }
+    const history = (Array.isArray(data.history) ? data.history : [])
+      .filter((s) => s && typeof s.name === "string" && Array.isArray(s.team))
+      .map((s) => ({
+        sid: typeof s.sid === "string" ? s.sid : Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: s.name,
+        description: typeof s.description === "string" ? s.description : "",
+        createdAt: typeof s.createdAt === "string" ? s.createdAt : new Date().toISOString(),
+        team: s.team.filter((id) => state.byId.has(id)),
+      }));
     const dropped = (data.team.length - team.length) + (data.shortlist.length - shortlist.length);
     if (!await confirmDialog(
-      "Import " + team.length + " team player(s) and " + shortlist.length +
-      " shortlist entr(ies)?" + (dropped ? "\n(" + dropped + " unrecognised entries will be skipped.)" : "") +
-      "\n\nThis replaces your current team and shortlist.", "Import"
+      "Import " + team.length + " team player(s), " + shortlist.length +
+      " shortlist entr(ies), " + Object.keys(notes).length + " note(s) and " +
+      history.length + " snapshot(s)?" +
+      (dropped ? "\n(" + dropped + " unrecognised entries will be skipped.)" : "") +
+      "\n\nThis replaces your current team, shortlist, notes and history.", "Import"
     )) return;
     state.team = team;
     state.shortlist = shortlist;
+    state.notes = notes;
+    state.history = history;
     saveLS();
     renderShortlist();
     renderTeam();
     renderPlayersBody();
   });
 
+  // team history
+  $("#btn-snapshot").addEventListener("click", () => {
+    const today = new Date().toLocaleDateString(undefined,
+      { day: "numeric", month: "short", year: "numeric" });
+    snapDialog("Save team snapshot", "Squad — " + today, "", (name, description) => {
+      state.history.unshift({
+        sid: Date.now().toString(36),
+        name: name || "Squad — " + today,
+        description,
+        createdAt: new Date().toISOString(),
+        team: [...state.team],
+      });
+      saveLS();
+      renderHistory();
+    });
+  });
+
+  $("#history-list").addEventListener("click", async (ev) => {
+    const card = ev.target.closest(".snap-card");
+    if (!card) return;
+    const snap = state.history.find((s) => s.sid === card.dataset.sid);
+    if (!snap) return;
+    if (ev.target.closest(".snap-edit")) {
+      snapDialog("Edit snapshot", snap.name, snap.description, (name, description) => {
+        snap.name = name || snap.name;
+        snap.description = description;
+        saveLS();
+        renderHistory();
+      });
+    } else if (ev.target.closest(".snap-delete")) {
+      if (await confirmDialog(`Delete snapshot "${snap.name}"?`, "Delete")) {
+        state.history = state.history.filter((s) => s.sid !== snap.sid);
+        saveLS();
+        renderHistory();
+      }
+    }
+  });
+
   // team removals
   $("#team-table tbody").addEventListener("click", async (ev) => {
+    if (noteClickHandler(ev)) return;
     if (!ev.target.closest(".remove")) return;
     const row = ev.target.closest("tr[data-id]");
     if (!row) return;
@@ -698,7 +898,9 @@ function bindEvents() {
 
   // drop stale saved ids that no longer match the CSV
   state.team = state.team.filter((id) => state.byId.has(id));
-  state.shortlist = state.shortlist.filter((e) => state.byId.has(e.id));
+  state.shortlist = state.shortlist.filter((id) => state.byId.has(id));
+  for (const id of Object.keys(state.notes))
+    if (!state.byId.has(id)) delete state.notes[id];
 
   buildFilterControls();
   bindEvents();

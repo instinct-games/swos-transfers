@@ -125,7 +125,11 @@
           team.
         </p>
         <div class="filter-row sl-filter">
-          <div class="pos-buttons" id="sl-positions" title="Filter by position"></div>
+          <div
+            class="pos-buttons"
+            id="sl-positions"
+            title="Filter by position"
+          ></div>
         </div>
         <div class="table-wrap">
           <table id="shortlist-table">
@@ -154,15 +158,60 @@
           <strong>Players</strong> tab and add them with the
           <strong>+ Team</strong> button.
         </p>
+        <div id="team-history">
+          <div class="history-head">
+            <h2>Team history</h2>
+            <button id="btn-snapshot" class="ghost">
+              Save snapshot of current team
+            </button>
+          </div>
+          <p class="hint" id="history-empty" hidden>
+            No snapshots yet. Save one to keep a record of this squad — e.g.
+            "Start of season 3".
+          </p>
+          <div id="history-list"></div>
+        </div>
       </section>
     </main>
 
     <footer>
-      Inspired by the legendary
+      Inspired by
       <a href="https://swos.gazchap.com" target="_blank" rel="noopener"
         >GazChap's swos database</a
       >
     </footer>
+
+    <dialog id="snap-dialog">
+      <p id="snap-title"></p>
+      <input
+        type="text"
+        id="snap-name"
+        placeholder="Name — e.g. Start of season 3"
+        maxlength="60"
+      />
+      <textarea
+        id="snap-desc"
+        rows="3"
+        placeholder="Description — how the season went, key signings…"
+      ></textarea>
+      <div class="dlg-actions">
+        <button class="ghost" id="snap-cancel">Cancel</button>
+        <button class="primary" id="snap-save">Save</button>
+      </div>
+    </dialog>
+
+    <dialog id="note-dialog">
+      <p id="note-title"></p>
+      <textarea
+        id="note-text"
+        rows="4"
+        placeholder="Bids, asking price, alternatives…"
+      ></textarea>
+      <div class="dlg-actions">
+        <button class="ghost" id="note-cancel">Cancel</button>
+        <button class="primary" id="note-save">Save</button>
+      </div>
+    </dialog>
 
     <dialog id="confirm-dialog">
       <p id="confirm-message"></p>

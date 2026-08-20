@@ -283,8 +283,31 @@ td.total { font-weight: 700; color: var(--accent); }
   color: var(--text);
 }
 
-.notes-cell { width: 100%; }
-.sl-notes { width: 100%; min-width: 130px; padding: 4px 8px; }
+.note-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: pointer;
+  padding: 0 2px;
+  vertical-align: middle;
+}
+.note-btn svg { display: block; }
+.note-btn:hover { opacity: 1; color: var(--text); }
+.note-btn.on-note { opacity: 1; color: var(--gold); }
+
+#note-dialog { width: 400px; }
+#note-title { margin: 0 0 10px; font-weight: 600; }
+#note-text { width: 100%; resize: vertical; }
+button.primary {
+  background: var(--green-dim);
+  border: 1px solid var(--green);
+  color: #fff;
+  border-radius: 6px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+button.primary:hover { background: var(--green); }
 
 .row-actions .sign {
   background: var(--green-dim);
@@ -345,6 +368,42 @@ footer {
   border-top: 1px solid var(--border);
 }
 footer a { color: var(--green); }
+
+/* ---------- team history ---------- */
+
+#team-history { margin-top: 28px; }
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.history-head h2 { font-size: 15px; margin: 0; letter-spacing: 0.3px; }
+
+.snap-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+.snap-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.snap-name { font-weight: 700; font-size: 15px; }
+.snap-actions { margin-left: auto; display: flex; gap: 6px; }
+.snap-actions button { padding: 2px 8px; font-size: 12px; }
+.snap-desc { margin: 6px 0 0; color: var(--muted); }
+.snap-card details { margin-top: 8px; }
+.snap-card summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+.snap-wrap { margin-top: 8px; max-width: 900px; }
+.snap-table { font-size: 13px; }
+.snap-table thead th { cursor: default; }
+.snap-table td b { color: var(--gold); }
+
+#snap-dialog { width: 420px; }
+#snap-title { margin: 0 0 10px; font-weight: 600; }
+#snap-name { width: 100%; margin-bottom: 8px; }
+#snap-desc { width: 100%; resize: vertical; }
 
 td .remove {
   border: none;

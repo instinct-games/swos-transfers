@@ -40,7 +40,21 @@ Skill columns use the SWOS convention: **P**assing, **V**elocity (shot power),
 ## Persistence
 
 Your team, shortlist and notes are saved in the browser's
-`localStorage` (keys `swos.team` and `swos.shortlist`) — they survive restarts
+`localStorage` (keys `swos.team`, `swos.shortlist` and `swos.notes`). Each
+player has a stable id: club rows are `name-club-country` (country = the club's
+league, e.g. `ryan-giggs-manchester-utd-england`) and national-team rows are
+`name-country` (e.g. `ryan-giggs-wales`); a shirt number is appended only for
+same-name-same-club collisions. The team and
+shortlist are stored as id lists and notes as an `id → text` map, which is also
+the export file format. Notes can be added to any player via the ✎ icon beside
+their name in any table (gold = has a note; hover to preview it).
+
+**Team history** (My Team tab): save named snapshots of your current squad with
+a description ("End of season 2 — won the league…"). Snapshots list the squad
+and its value at that point, and can be renamed, re-described, or deleted.
+They're stored in `swos.history` and included in Export/Import.
+
+Data survives restarts
 but are per-browser and per-origin. The CSV itself is read-only source data.
 
 **Export / Import** (header, top right): Export downloads your team, shortlist,
