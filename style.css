@@ -413,3 +413,67 @@ td .remove {
   font-size: 14px;
 }
 td .remove:hover { color: var(--red); }
+
+/* ---------- mobile (desktop rules above are untouched) ---------- */
+
+@media (max-width: 760px) {
+  /* header: title + Export/Import on row one, tabs scroll on row two */
+  header { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+  h1 { font-size: 16px; }
+  #tabs { order: 3; flex-basis: 100%; overflow-x: auto; }
+  .tab { padding: 6px 10px; white-space: nowrap; }
+
+  main { padding: 12px 10px 48px; }
+
+  /* filters stack into full/half-width controls */
+  .filters { padding: 10px; }
+  .filter-row { gap: 6px; }
+  #f-search { flex-basis: 100%; min-width: 0; }
+  #f-league, #f-nation { flex: 1 1 40%; min-width: 0; }
+  .val-input { flex: 1 1 40%; width: auto; min-width: 0; }
+  .pos-buttons { flex-wrap: wrap; }
+  .pos-buttons button { padding: 6px 10px; }
+
+  .results-bar { flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+
+  table { font-size: 13px; }
+  th, td { padding: 5px 7px; }
+  .row-actions button { padding: 4px 9px; }
+
+  /* pin the Player column while the rest of the row scrolls */
+  #players-table th:first-child,
+  #players-table td:first-child,
+  #shortlist-table th:first-child,
+  #shortlist-table td:first-child,
+  #team-table th:first-child,
+  #team-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg);
+    box-shadow: inset -1px 0 0 var(--border);
+  }
+  #players-table thead th:first-child,
+  #shortlist-table thead th:first-child,
+  #team-table thead th:first-child {
+    background: var(--panel);
+    z-index: 3;
+  }
+  tbody tr.in-team td:first-child {
+    box-shadow: inset 3px 0 0 var(--green), inset -1px 0 0 var(--border);
+  }
+  /* long names ellipsise so the pinned column stays narrow;
+     capping the span (not the td) keeps the note icon visible */
+  td:first-child .name {
+    display: inline-block;
+    max-width: 32vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+  }
+
+  .history-head { flex-wrap: wrap; }
+
+  dialog { max-width: calc(100vw - 32px); }
+  #note-dialog, #snap-dialog { width: calc(100vw - 32px); }
+}
